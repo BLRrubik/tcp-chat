@@ -1,8 +1,11 @@
 package hub
 
 import (
+	"fmt"
+	"net"
 	"tcp-chat/internal/domain"
 	"tcp-chat/internal/message"
+	"time"
 )
 
 type Request[T any] struct {
@@ -57,6 +60,36 @@ func (h *Hub) Unregister(c *domain.Client) {
 
 func (h *Hub) Broadcast(m message.ChatMessage) {
 	h.broadcast <- m
+}
+
+func (h *Hub) setupClientConnection(conn net.Conn) *domain.Client {
+	client := &domain.Client{
+		ID:       domain.GenerateClientID(),
+		Conn:     conn,
+		JoinTime: time.Now(),
+	}
+
+	client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
+	h.Broadcast(message.ChatMessage{
+		Timestamp:   time.Now(),
+		Content:     fmt.Sprintf("Client %s connected from %s", client.ID, conn.RemoteAddr().String()),
+		MessageType: message.MsgTypeSystem,
+	})
+
+	return client
+}
+
+func (h *Hub) cleanupClient(client *domain.Client) {
+	client.Conn.Close()
+
+	h.Unregister(client)
+
+	h.Broadcast(message.ChatMessage{
+		Timestamp:   time.Now(),
+		Content:     fmt.Sprintf("Client %s disconnected", client.ID),
+		MessageType: message.MsgTypeSystem,
+	})
 }
 
 func (h *Hub) GetActiveClients() []string {
