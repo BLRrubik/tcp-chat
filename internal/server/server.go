@@ -1,12 +1,9 @@
 package server
 
 import (
-	"bufio"
-	"fmt"
 	"log"
 	"net"
 	"sync/atomic"
-	"tcp-chat/internal/message"
 	"time"
 )
 
@@ -32,31 +29,8 @@ func StartEchoServer(port string) error {
 		}
 		defer conn.Close()
 
-		go HandleClient(&Client{
-			ID:       GenerateClientID(),
-			Conn:     conn,
-			JoinTime: time.Now(),
-		})
+		go handleClient(conn, GenerateClientID())
 	}
 
 	return nil
-}
-
-func HandleClient(client *Client) error {
-	scanner := bufio.NewScanner(client.Conn)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		msg := message.ParseIncomingMessage(line, client.ID)
-
-		client.Conn.Write([]byte(message.FormatMessage(msg) + "\n"))
-	}
-
-	return nil
-}
-
-func GenerateClientID() string {
-	counter.Add(1)
-
-	return fmt.Sprintf("User_%d", counter.Load())
 }
