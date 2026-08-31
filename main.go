@@ -1,13 +1,14 @@
 package main
 
 import (
+	"tcp-chat/internal/hub"
 	"tcp-chat/internal/server"
 )
 
 func main() {
-	hub := server.NewHub()
+	h := hub.NewHub()
 
-	go hub.Run()
+	go h.Run()
 
-	server.StartEchoServer(":8010", hub)
+	server.StartEchoServer(":8010", h)
 }

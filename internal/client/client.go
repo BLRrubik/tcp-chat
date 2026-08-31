@@ -1,31 +1,37 @@
-package server
+package client
 
 import (
 	"bufio"
 	"fmt"
 	"net"
-	"tcp-chat/internal/message"
+	"sync/atomic"
 	"time"
+
+	"tcp-chat/internal/domain"
+	"tcp-chat/internal/hub"
+	"tcp-chat/internal/message"
 )
 
-func handleClient(hub *Hub, conn net.Conn, clientID string) {
-	client := &Client{
+var counter atomic.Uint32
+
+func HandleClient(h *hub.Hub, conn net.Conn, clientID string) {
+	client := &domain.Client{
 		ID:       clientID,
 		Conn:     conn,
 		JoinTime: time.Now(),
 	}
 	defer client.Conn.Close()
 
-	hub.register <- client
+	h.Register(client)
 
 	scanner := bufio.NewScanner(client.Conn)
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		hub.broadcast <- message.ParseIncomingMessage(line, client.ID)
+		h.Broadcast(message.ParseIncomingMessage(line, client.ID))
 	}
 
-	hub.unregister <- client
+	h.Unregister(client)
 
 	if err := scanner.Err(); err != nil {
 		fmt.Println("reading standard input:", err)

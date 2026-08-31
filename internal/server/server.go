@@ -3,19 +3,12 @@ package server
 import (
 	"log"
 	"net"
-	"sync/atomic"
-	"time"
+
+	"tcp-chat/internal/client"
+	"tcp-chat/internal/hub"
 )
 
-var counter atomic.Uint32
-
-type Client struct {
-	ID       string
-	Conn     net.Conn
-	JoinTime time.Time
-}
-
-func StartEchoServer(port string, hub *Hub) error {
+func StartEchoServer(port string, h *hub.Hub) error {
 	listener, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatal(err)
@@ -28,8 +21,6 @@ func StartEchoServer(port string, hub *Hub) error {
 			log.Fatal(err)
 		}
 
-		go handleClient(hub, conn, GenerateClientID())
+		go client.HandleClient(h, conn, client.GenerateClientID())
 	}
-
-	return nil
 }
