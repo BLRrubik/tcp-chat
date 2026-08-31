@@ -14,7 +14,7 @@ var counter atomic.Uint32
 
 type Client struct {
 	ID       string
-	conn     net.Conn
+	Conn     net.Conn
 	JoinTime time.Time
 }
 
@@ -34,7 +34,7 @@ func StartEchoServer(port string) error {
 
 		go HandleClient(&Client{
 			ID:       GenerateClientID(),
-			conn:     conn,
+			Conn:     conn,
 			JoinTime: time.Now(),
 		})
 	}
@@ -43,13 +43,13 @@ func StartEchoServer(port string) error {
 }
 
 func HandleClient(client *Client) error {
-	scanner := bufio.NewScanner(client.conn)
+	scanner := bufio.NewScanner(client.Conn)
 	for scanner.Scan() {
 		line := scanner.Text()
 
 		msg := message.ParseIncomingMessage(line, client.ID)
 
-		client.conn.Write([]byte(message.FormatMessage(msg) + "\n"))
+		client.Conn.Write([]byte(message.FormatMessage(msg) + "\n"))
 	}
 
 	return nil
