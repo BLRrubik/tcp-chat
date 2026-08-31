@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"tcp-chat/internal/message"
+	"time"
 )
 
 func StartEchoServer(port string, h *Hub) error {
@@ -36,6 +37,7 @@ func handleClient(h *Hub, conn net.Conn) {
 		line := scanner.Text()
 
 		h.Broadcast(message.ParseIncomingMessage(line, client.ID))
+		client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	}
 
 	h.Unregister(client)

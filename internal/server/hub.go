@@ -71,6 +71,8 @@ func (h *Hub) setupClientConnection(conn net.Conn) *domain.Client {
 
 	client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
+	client.Conn.Write([]byte(fmt.Sprintf("Welcome %s! Type your messages below:\n", client.ID)))
+
 	h.Broadcast(message.ChatMessage{
 		Timestamp:   time.Now(),
 		Content:     fmt.Sprintf("Client %s connected from %s", client.ID, conn.RemoteAddr().String()),
