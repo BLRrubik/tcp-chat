@@ -8,7 +8,11 @@ import (
 )
 
 func main() {
-	listener, err := net.Listen("tcp", ":8010")
+	StartEchoServer(":8010")
+}
+
+func StartEchoServer(port string) error {
+	listener, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -26,6 +30,8 @@ func main() {
 
 		fmt.Println("incoming", line)
 
-		conn.Write([]byte(line))
+		conn.Write([]byte(line + "\n"))
 	}
+
+	return nil
 }
