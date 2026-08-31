@@ -27,7 +27,6 @@ func StartEchoServer(port string) error {
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer conn.Close()
 
 		go handleClient(conn, GenerateClientID())
 	}
