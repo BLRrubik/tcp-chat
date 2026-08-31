@@ -2,10 +2,21 @@ package server
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
+	"sync/atomic"
 	"tcp-chat/internal/message"
+	"time"
 )
+
+var counter atomic.Uint32
+
+type Client struct {
+	ID       string
+	conn     net.Conn
+	JoinTime time.Time
+}
 
 func StartEchoServer(port string) error {
 	listener, err := net.Listen("tcp", port)
@@ -20,14 +31,30 @@ func StartEchoServer(port string) error {
 	}
 	defer conn.Close()
 
-	scanner := bufio.NewScanner(conn)
+	go HandleClient(&Client{
+		ID:       GenerateClientID(),
+		conn:     conn,
+		JoinTime: time.Now(),
+	})
+
+	return nil
+}
+
+func HandleClient(client *Client) error {
+	scanner := bufio.NewScanner(client.conn)
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		msg := message.ParseIncomingMessage(line, conn.RemoteAddr().String())
+		msg := message.ParseIncomingMessage(line, client.ID)
 
-		conn.Write([]byte(message.FormatMessage(msg) + "\n"))
+		client.conn.Write([]byte(message.FormatMessage(msg) + "\n"))
 	}
 
 	return nil
+}
+
+func GenerateClientID() string {
+	counter.Add(1)
+
+	return fmt.Sprintf("User_%d", counter.Load())
 }
