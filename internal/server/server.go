@@ -25,17 +25,19 @@ func StartEchoServer(port string) error {
 	}
 	defer listener.Close()
 
-	conn, err := listener.Accept()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer conn.Close()
 
-	go HandleClient(&Client{
-		ID:       GenerateClientID(),
-		conn:     conn,
-		JoinTime: time.Now(),
-	})
+		go HandleClient(&Client{
+			ID:       GenerateClientID(),
+			conn:     conn,
+			JoinTime: time.Now(),
+		})
+	}
 
 	return nil
 }
