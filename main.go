@@ -1,12 +1,11 @@
 package main
 
 import (
-	"tcp-chat/internal/hub"
 	"tcp-chat/internal/server"
 )
 
 func main() {
-	h := hub.NewHub()
+	h := server.NewHub()
 
 	go h.Run()
 

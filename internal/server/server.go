@@ -5,14 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"tcp-chat/internal/domain"
 	"tcp-chat/internal/message"
-	"time"
-
-	"tcp-chat/internal/hub"
 )
 
-func StartEchoServer(port string, h *hub.Hub) error {
+func StartEchoServer(port string, h *Hub) error {
 	listener, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatal(err)
@@ -25,17 +21,13 @@ func StartEchoServer(port string, h *hub.Hub) error {
 			log.Fatal(err)
 		}
 
-		go handleClient(h, conn, domain.GenerateClientID())
+		go handleClient(h, conn)
 	}
 }
 
-func handleClient(h *hub.Hub, conn net.Conn, clientID string) {
-	client := &domain.Client{
-		ID:       clientID,
-		Conn:     conn,
-		JoinTime: time.Now(),
-	}
-	defer client.Conn.Close()
+func handleClient(h *Hub, conn net.Conn) {
+	client := h.setupClientConnection(conn)
+	defer h.cleanupClient(client)
 
 	h.Register(client)
 
