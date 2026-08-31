@@ -5,5 +5,9 @@ import (
 )
 
 func main() {
-	server.StartEchoServer(":8010")
+	hub := server.NewHub()
+
+	go hub.Run()
+
+	server.StartEchoServer(":8010", hub)
 }

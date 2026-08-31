@@ -15,7 +15,7 @@ type Client struct {
 	JoinTime time.Time
 }
 
-func StartEchoServer(port string) error {
+func StartEchoServer(port string, hub *Hub) error {
 	listener, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatal(err)
@@ -28,7 +28,7 @@ func StartEchoServer(port string) error {
 			log.Fatal(err)
 		}
 
-		go handleClient(conn, GenerateClientID())
+		go handleClient(hub, conn, GenerateClientID())
 	}
 
 	return nil

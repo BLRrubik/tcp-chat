@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func handleClient(conn net.Conn, clientID string) {
+func handleClient(hub *Hub, conn net.Conn, clientID string) {
 	client := &Client{
 		ID:       clientID,
 		Conn:     conn,
@@ -16,14 +16,16 @@ func handleClient(conn net.Conn, clientID string) {
 	}
 	defer client.Conn.Close()
 
+	hub.register <- client
+
 	scanner := bufio.NewScanner(client.Conn)
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		msg := message.ParseIncomingMessage(line, client.ID)
-
-		client.Conn.Write([]byte(message.FormatMessage(msg) + "\n"))
+		hub.broadcast <- message.ParseIncomingMessage(line, client.ID)
 	}
+
+	hub.unregister <- client
 
 	if err := scanner.Err(); err != nil {
 		fmt.Println("reading standard input:", err)
