@@ -1,10 +1,10 @@
 package hub
 
 import (
+	"github.com/blrrubik/tcp-chat-server/internal/domain"
+	"github.com/blrrubik/tcp-chat-server/internal/logging"
 	"net"
 	"sync"
-	"tcp-chat/internal/domain"
-	"tcp-chat/internal/logging"
 	"testing"
 	"time"
 )

@@ -1,9 +1,9 @@
 package server
 
 import (
+	"github.com/blrrubik/tcp-chat-server/internal/hub"
 	"log"
 	"net"
-	"tcp-chat/internal/hub"
 )
 
 func StartEchoServer(port string, h *hub.Hub) error {

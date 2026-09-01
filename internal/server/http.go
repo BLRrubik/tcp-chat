@@ -2,9 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/blrrubik/tcp-chat-server/internal/hub"
 	"log"
 	"net/http"
-	"tcp-chat/internal/hub"
 )
 
 type healthResponse struct {

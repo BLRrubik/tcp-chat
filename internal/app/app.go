@@ -3,14 +3,14 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/blrrubik/tcp-chat-server/internal/config"
+	"github.com/blrrubik/tcp-chat-server/internal/hub"
+	"github.com/blrrubik/tcp-chat-server/internal/logging"
+	"github.com/blrrubik/tcp-chat-server/internal/server"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"tcp-chat/internal/config"
-	"tcp-chat/internal/hub"
-	"tcp-chat/internal/logging"
-	"tcp-chat/internal/server"
 	"time"
 )
 

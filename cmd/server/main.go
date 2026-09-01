@@ -1,6 +1,6 @@
 package main
 
-import "tcp-chat/internal/app"
+import "github.com/blrrubik/tcp-chat-server/internal/app"
 
 func main() {
 	app.Run()

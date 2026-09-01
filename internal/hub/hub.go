@@ -4,13 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/blrrubik/tcp-chat-server/internal/domain"
+	"github.com/blrrubik/tcp-chat-server/internal/storage"
 	"log/slog"
 	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"tcp-chat/internal/domain"
-	"tcp-chat/internal/storage"
 	"time"
 )
 

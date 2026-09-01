@@ -1,8 +1,8 @@
 package storage
 
 import (
-	"tcp-chat/internal/domain"
-	"tcp-chat/internal/types"
+	"github.com/blrrubik/tcp-chat-server/internal/domain"
+	"github.com/blrrubik/tcp-chat-server/internal/types"
 )
 
 type MessageHistory struct {
