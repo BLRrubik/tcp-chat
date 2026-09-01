@@ -31,6 +31,9 @@ func StartEchoServer(port string, h *Hub) error {
 func handleClient(h *Hub, conn net.Conn) {
 	var client *domain.Client
 
+	h.wg.Add(1)
+	defer h.wg.Done()
+
 	defer func() {
 		if r := recover(); r != nil {
 			id := "unknown"
@@ -58,8 +61,6 @@ func handleClient(h *Hub, conn net.Conn) {
 
 		client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	}
-
-	h.Unregister(client)
 
 	if err := scanner.Err(); err != nil {
 		h.logger.Printf("ERROR Client %s connection error: %v", client.ID, err)

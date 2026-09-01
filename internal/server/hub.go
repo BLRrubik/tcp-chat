@@ -1,14 +1,24 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"tcp-chat/internal/domain"
 	"tcp-chat/internal/storage"
 	"time"
 )
+
+const shutdownGracePeriod = 10 * time.Second
+
+func SetupLogging(level string) *log.Logger {
+	return log.New(os.Stdout, "[TCP-CHAT] ", log.Ldate|log.Ltime)
+}
 
 type activeClientsRequest struct {
 	Response chan []string
@@ -20,6 +30,10 @@ type clientCountRequest struct {
 
 type messageHistoryRequest struct {
 	Response chan []domain.ChatMessage
+}
+
+type closeAllRequest struct {
+	Response chan struct{}
 }
 
 type ServerStats struct {
@@ -48,6 +62,9 @@ type Hub struct {
 	logger         *log.Logger
 	stats          ServerStats
 	startedAt      time.Time
+
+	wg           sync.WaitGroup
+	shuttingDown atomic.Bool
 }
 
 func NewHub(logger *log.Logger) *Hub {
@@ -75,7 +92,11 @@ func (h *Hub) Run() {
 			delete(h.clients, client.ID)
 			h.stats.ActiveConnections = len(h.clients)
 			h.logger.Printf("INFO Client %s disconnected", client.ID)
-		case msg := <-h.broadcast:
+		case msg, ok := <-h.broadcast:
+			if !ok {
+				continue
+			}
+
 			if msg.MessageType == domain.MsgTypeUser {
 				h.messageHistory.Add(msg)
 				h.stats.TotalMessagesProcessed++
@@ -93,6 +114,11 @@ func (h *Hub) Run() {
 				req.Response <- len(h.clients)
 			case messageHistoryRequest:
 				req.Response <- h.messageHistory.GetRecent()
+			case closeAllRequest:
+				for _, client := range h.clients {
+					client.Conn.Close()
+				}
+				close(req.Response)
 			}
 		}
 	}
@@ -107,6 +133,10 @@ func (h *Hub) Unregister(c *domain.Client) {
 }
 
 func (h *Hub) Broadcast(m domain.ChatMessage) {
+	if h.shuttingDown.Load() {
+		return
+	}
+
 	h.broadcast <- m
 }
 
@@ -133,6 +163,43 @@ func (h *Hub) GetMessageHistory() []domain.ChatMessage {
 	h.requests <- req
 
 	return <-req.Response
+}
+
+func (h *Hub) Shutdown(ctx context.Context) error {
+	h.logger.Println("INFO Notifying clients...")
+	h.Broadcast(domain.ChatMessage{
+		Timestamp:   time.Now(),
+		Content:     fmt.Sprintf("Server shutting down in %.0f seconds", shutdownGracePeriod.Seconds()),
+		MessageType: domain.MsgTypeSystem,
+	})
+
+	h.shuttingDown.Store(true)
+	close(h.broadcast)
+
+	h.closeAllConnections()
+
+	done := make(chan struct{})
+	go func() {
+		h.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		h.logger.Println("INFO All clients disconnected")
+	case <-ctx.Done():
+		h.logger.Println("WARN Shutdown timeout reached, some goroutines did not finish")
+	}
+
+	h.logger.Println("INFO Server stopped gracefully")
+
+	return nil
+}
+
+func (h *Hub) closeAllConnections() {
+	req := closeAllRequest{Response: make(chan struct{})}
+	h.requests <- req
+	<-req.Response
 }
 
 func (h *Hub) setupClientConnection(conn net.Conn) *domain.Client {
