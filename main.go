@@ -63,25 +63,18 @@ type ServerConfig struct {
 }
 
 func parseCommandLineArgs() ServerConfig {
-	var (
-		port               string
-		logLevel           string
-		maxConnections     int
-		messageHistorySize int
-	)
-
-	flag.StringVar(&port, "port", ":8080", "Port to listen on")
-	flag.StringVar(&logLevel, "log-level", "info", "Log level")
-	flag.IntVar(&maxConnections, "max-connections", 10, "Maximum number of concurrent connections")
-	flag.IntVar(&messageHistorySize, "message-history-size", 100, "Message history size")
+	port := flag.String("port", ":8080", "Port to listen on")
+	logLevel := flag.String("log-level", "info", "Log level")
+	maxConnections := flag.Int("max-connections", 10, "Maximum number of concurrent connections")
+	messageHistorySize := flag.Int("message-history-size", 100, "Message history size")
 
 	flag.Parse()
 
 	return ServerConfig{
-		Port:               port,
-		MaxConnections:     maxConnections,
-		LogLevel:           logLevel,
-		MessageHistorySize: messageHistorySize,
+		Port:               *port,
+		MaxConnections:     *maxConnections,
+		LogLevel:           *logLevel,
+		MessageHistorySize: *messageHistorySize,
 	}
 }
 
