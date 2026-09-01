@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"tcp-chat/internal/message"
+	"tcp-chat/internal/domain"
 	"time"
 )
 
@@ -36,7 +36,7 @@ func handleClient(h *Hub, conn net.Conn) {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		h.Broadcast(message.ParseIncomingMessage(line, client.ID))
+		h.Broadcast(domain.ParseIncomingMessage(line, client.ID))
 		client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	}
 

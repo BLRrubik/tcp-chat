@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"tcp-chat/internal/domain"
-	"tcp-chat/internal/message"
 	"time"
 )
 
@@ -14,7 +13,7 @@ type Request[T any] struct {
 
 type Hub struct {
 	clients    map[string]*domain.Client
-	broadcast  chan message.ChatMessage
+	broadcast  chan domain.ChatMessage
 	register   chan *domain.Client
 	unregister chan *domain.Client
 	requests   chan any
@@ -23,7 +22,7 @@ type Hub struct {
 func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[string]*domain.Client),
-		broadcast:  make(chan message.ChatMessage),
+		broadcast:  make(chan domain.ChatMessage),
 		register:   make(chan *domain.Client),
 		unregister: make(chan *domain.Client),
 		requests:   make(chan any),
@@ -58,7 +57,7 @@ func (h *Hub) Unregister(c *domain.Client) {
 	h.unregister <- c
 }
 
-func (h *Hub) Broadcast(m message.ChatMessage) {
+func (h *Hub) Broadcast(m domain.ChatMessage) {
 	h.broadcast <- m
 }
 
@@ -73,10 +72,10 @@ func (h *Hub) setupClientConnection(conn net.Conn) *domain.Client {
 
 	client.Conn.Write([]byte(fmt.Sprintf("Welcome %s! Type your messages below:\n", client.ID)))
 
-	h.Broadcast(message.ChatMessage{
+	h.Broadcast(domain.ChatMessage{
 		Timestamp:   time.Now(),
 		Content:     fmt.Sprintf("Client %s connected from %s", client.ID, conn.RemoteAddr().String()),
-		MessageType: message.MsgTypeSystem,
+		MessageType: domain.MsgTypeSystem,
 	})
 
 	return client
@@ -87,10 +86,10 @@ func (h *Hub) cleanupClient(client *domain.Client) {
 
 	h.Unregister(client)
 
-	h.Broadcast(message.ChatMessage{
+	h.Broadcast(domain.ChatMessage{
 		Timestamp:   time.Now(),
 		Content:     fmt.Sprintf("Client %s disconnected", client.ID),
-		MessageType: message.MsgTypeSystem,
+		MessageType: domain.MsgTypeSystem,
 	})
 }
 
@@ -117,12 +116,12 @@ func (h *Hub) activeClients() []string {
 	return ids
 }
 
-func (h *Hub) broadcastMessage(m message.ChatMessage) {
+func (h *Hub) broadcastMessage(m domain.ChatMessage) {
 	for _, client := range h.clients {
 		if client.ID == m.ClientID {
 			continue
 		}
 
-		client.Conn.Write([]byte(message.FormatMessage(m) + "\n"))
+		client.Conn.Write([]byte(domain.FormatMessage(m) + "\n"))
 	}
 }

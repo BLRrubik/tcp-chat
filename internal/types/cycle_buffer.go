@@ -5,6 +5,7 @@ import "sync"
 type CycleBuffer[T any] struct {
 	readPtr  int
 	writePtr int
+	count    int
 	buf      []T
 
 	mu sync.Mutex
@@ -12,9 +13,7 @@ type CycleBuffer[T any] struct {
 
 func NewCycleBuffer[T any](size int) *CycleBuffer[T] {
 	return &CycleBuffer[T]{
-		readPtr:  -1,
-		writePtr: -1,
-		buf:      make([]T, size),
+		buf: make([]T, size),
 	}
 }
 
@@ -22,37 +21,29 @@ func (cb *CycleBuffer[T]) Push(val T) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	if cb.writePtr == -1 {
-		cb.writePtr = 0
-	}
-
 	cb.buf[cb.writePtr] = val
-
 	cb.writePtr = (cb.writePtr + 1) % len(cb.buf)
+
+	if cb.count == len(cb.buf) {
+		cb.readPtr = cb.writePtr
+	} else {
+		cb.count++
+	}
 }
 
 func (cb *CycleBuffer[T]) Pop() T {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	if cb.isEmpty() {
+	if cb.count == 0 {
 		var zero T
 
 		return zero
 	}
 
-	if cb.readPtr == -1 {
-		cb.readPtr = 0
-	}
-
 	val := cb.buf[cb.readPtr]
-
 	cb.readPtr = (cb.readPtr + 1) % len(cb.buf)
-
-	if cb.readPtr == cb.writePtr {
-		cb.readPtr = -1
-		cb.writePtr = -1
-	}
+	cb.count--
 
 	return val
 }
@@ -61,9 +52,20 @@ func (cb *CycleBuffer[T]) IsEmpty() bool {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	return cb.isEmpty()
+	return cb.count == 0
 }
 
-func (cb *CycleBuffer[T]) isEmpty() bool {
-	return cb.writePtr == -1
+func (cb *CycleBuffer[T]) GetValues() []T {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	vals := make([]T, 0, cb.count)
+	idx := cb.readPtr
+
+	for range cb.count {
+		vals = append(vals, cb.buf[idx])
+		idx = (idx + 1) % len(cb.buf)
+	}
+
+	return vals
 }
