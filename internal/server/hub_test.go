@@ -9,7 +9,7 @@ import (
 )
 
 func TestHub_ConcurrentBroadcastAndReads_NoRace(t *testing.T) {
-	h := NewHub(SetupLogging("info"))
+	h := NewHub(SetupLogging("info"), 50, 0)
 	go h.Run()
 
 	var wg sync.WaitGroup
@@ -41,7 +41,7 @@ func (c *panicOnWriteConn) Write(_ []byte) (int, error) {
 }
 
 func TestHandleClient_PanicRecovered_HubKeepsRunning(t *testing.T) {
-	h := NewHub(SetupLogging("info"))
+	h := NewHub(SetupLogging("info"), 50, 0)
 	go h.Run()
 
 	client, srv := net.Pipe()

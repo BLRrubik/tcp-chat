@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -16,8 +18,37 @@ import (
 
 const shutdownGracePeriod = 10 * time.Second
 
+var logLevels = map[string]int{"error": 0, "warn": 1, "info": 2}
+
+type levelFilterWriter struct {
+	dest      io.Writer
+	threshold int
+}
+
+func (w *levelFilterWriter) Write(p []byte) (int, error) {
+	level := logLevels["info"]
+
+	switch {
+	case bytes.Contains(p, []byte("ERROR")):
+		level = logLevels["error"]
+	case bytes.Contains(p, []byte("WARN")):
+		level = logLevels["warn"]
+	}
+
+	if level > w.threshold {
+		return len(p), nil
+	}
+
+	return w.dest.Write(p)
+}
+
 func SetupLogging(level string) *log.Logger {
-	return log.New(os.Stdout, "[TCP-CHAT] ", log.Ldate|log.Ltime)
+	threshold, ok := logLevels[strings.ToLower(level)]
+	if !ok {
+		threshold = logLevels["info"]
+	}
+
+	return log.New(&levelFilterWriter{dest: os.Stdout, threshold: threshold}, "[TCP-CHAT] ", log.Ldate|log.Ltime)
 }
 
 type activeClientsRequest struct {
@@ -65,9 +96,11 @@ type Hub struct {
 
 	wg           sync.WaitGroup
 	shuttingDown atomic.Bool
+
+	maxConnections int
 }
 
-func NewHub(logger *log.Logger) *Hub {
+func NewHub(logger *log.Logger, messageHistorySize int, maxConnections int) *Hub {
 	return &Hub{
 		clients:        make(map[string]*domain.Client),
 		broadcast:      make(chan domain.ChatMessage),
@@ -75,9 +108,10 @@ func NewHub(logger *log.Logger) *Hub {
 		unregister:     make(chan *domain.Client),
 		requests:       make(chan any),
 		errors:         make(chan error),
-		messageHistory: storage.NewMessageHistory(),
+		messageHistory: storage.NewMessageHistory(messageHistorySize),
 		logger:         logger,
 		startedAt:      time.Now(),
+		maxConnections: maxConnections,
 	}
 }
 
@@ -156,6 +190,14 @@ func (h *Hub) GetClientCount() int {
 	h.requests <- req
 
 	return <-req.Response
+}
+
+func (h *Hub) IsFull() bool {
+	if h.maxConnections <= 0 {
+		return false
+	}
+
+	return h.GetClientCount() >= h.maxConnections
 }
 
 func (h *Hub) GetMessageHistory() []domain.ChatMessage {

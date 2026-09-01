@@ -9,9 +9,9 @@ type MessageHistory struct {
 	buf *types.CycleBuffer[domain.ChatMessage]
 }
 
-func NewMessageHistory() *MessageHistory {
+func NewMessageHistory(size int) *MessageHistory {
 	return &MessageHistory{
-		buf: types.NewCycleBuffer[domain.ChatMessage](50),
+		buf: types.NewCycleBuffer[domain.ChatMessage](size),
 	}
 }
 

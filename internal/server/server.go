@@ -29,6 +29,13 @@ func StartEchoServer(port string, h *Hub) error {
 }
 
 func handleClient(h *Hub, conn net.Conn) {
+	if h.IsFull() {
+		conn.Write([]byte("Server full. Try again later.\n"))
+		conn.Close()
+
+		return
+	}
+
 	var client *domain.Client
 
 	h.wg.Add(1)

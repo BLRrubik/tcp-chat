@@ -2,17 +2,22 @@ package main
 
 import (
 	"context"
-	"log"
+	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"tcp-chat/internal/server"
 	"time"
 )
 
 func main() {
-	logger := SetupLogging("info")
-	h := server.NewHub(logger)
+	cfg := parseCommandLineArgs()
+	printStartupBanner(cfg)
+
+	logger := server.SetupLogging(cfg.LogLevel)
+	h := server.NewHub(logger, cfg.MessageHistorySize, cfg.MaxConnections)
 
 	go h.Run()
 
@@ -40,7 +45,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	server.StartEchoServer(":8010", h)
+	server.StartEchoServer(cfg.Port, h)
 }
 
 func setupSignalHandling() chan os.Signal {
@@ -50,6 +55,47 @@ func setupSignalHandling() chan os.Signal {
 	return sigChan
 }
 
-func SetupLogging(level string) *log.Logger {
-	return log.New(os.Stdout, "[TCP-CHAT] ", log.Ldate|log.Ltime)
+type ServerConfig struct {
+	Port               string
+	MaxConnections     int
+	LogLevel           string
+	MessageHistorySize int
+}
+
+func parseCommandLineArgs() ServerConfig {
+	var (
+		port               string
+		logLevel           string
+		maxConnections     int
+		messageHistorySize int
+	)
+
+	flag.StringVar(&port, "port", ":8080", "Port to listen on")
+	flag.StringVar(&logLevel, "log-level", "info", "Log level")
+	flag.IntVar(&maxConnections, "max-connections", 10, "Maximum number of concurrent connections")
+	flag.IntVar(&messageHistorySize, "message-history-size", 100, "Message history size")
+
+	flag.Parse()
+
+	return ServerConfig{
+		Port:               port,
+		MaxConnections:     maxConnections,
+		LogLevel:           logLevel,
+		MessageHistorySize: messageHistorySize,
+	}
+}
+
+const banner = `
+╔══════════════════════════════════════╗
+║         TCP Chat Server              ║
+╚══════════════════════════════════════╝
+Port:            %s
+Max Connections: %d
+Log Level:       %s
+Connect using: telnet <ip> %s
+`
+
+func printStartupBanner(config ServerConfig) {
+	port := strings.TrimLeft(config.Port, ":")
+	fmt.Printf(banner, port, config.MaxConnections, config.LogLevel, port)
 }
