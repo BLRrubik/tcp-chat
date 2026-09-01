@@ -1,13 +1,15 @@
 package server
 
 import (
+	"net"
 	"sync"
 	"tcp-chat/internal/domain"
 	"testing"
+	"time"
 )
 
 func TestHub_ConcurrentBroadcastAndReads_NoRace(t *testing.T) {
-	h := NewHub()
+	h := NewHub(SetupLogging("info"))
 	go h.Run()
 
 	var wg sync.WaitGroup
@@ -28,4 +30,40 @@ func TestHub_ConcurrentBroadcastAndReads_NoRace(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+type panicOnWriteConn struct {
+	net.Conn
+}
+
+func (c *panicOnWriteConn) Write(_ []byte) (int, error) {
+	panic("boom: simulated client write failure")
+}
+
+func TestHandleClient_PanicRecovered_HubKeepsRunning(t *testing.T) {
+	h := NewHub(SetupLogging("info"))
+	go h.Run()
+
+	client, srv := net.Pipe()
+	defer client.Close()
+
+	done := make(chan struct{})
+	go func() {
+		handleClient(h, &panicOnWriteConn{srv})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleClient did not return after panic; recover() missing or broken")
+	}
+
+	if count := h.GetClientCount(); count != 0 {
+		t.Errorf("expected 0 clients after panicking connection, got %d", count)
+	}
+
+	if got := h.GetActiveClients(); len(got) != 0 {
+		t.Errorf("hub unresponsive or corrupted after panic: %v", got)
+	}
 }

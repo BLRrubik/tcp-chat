@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"tcp-chat/internal/domain"
 	"time"
 )
 
@@ -14,6 +15,8 @@ func StartEchoServer(port string, h *Hub) error {
 		log.Fatal(err)
 	}
 	defer listener.Close()
+
+	h.logger.Printf("INFO Server starting on port %s", port)
 
 	for {
 		conn, err := listener.Accept()
@@ -26,9 +29,25 @@ func StartEchoServer(port string, h *Hub) error {
 }
 
 func handleClient(h *Hub, conn net.Conn) {
-	client := h.setupClientConnection(conn)
-	defer h.cleanupClient(client)
+	var client *domain.Client
 
+	defer func() {
+		if r := recover(); r != nil {
+			id := "unknown"
+			if client != nil {
+				id = client.ID
+			}
+
+			h.logger.Printf("WARN Cleaning up %s, server continues", id)
+			h.ReportError(fmt.Errorf("panic in client %s: %v", id, r))
+		}
+
+		if client != nil {
+			h.cleanupClient(client)
+		}
+	}()
+
+	client = h.setupClientConnection(conn)
 	h.Register(client)
 
 	scanner := bufio.NewScanner(client.Conn)
@@ -43,6 +62,7 @@ func handleClient(h *Hub, conn net.Conn) {
 	h.Unregister(client)
 
 	if err := scanner.Err(); err != nil {
-		fmt.Println("reading standard input:", err)
+		h.logger.Printf("ERROR Client %s connection error: %v", client.ID, err)
+		h.ReportError(err)
 	}
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"tcp-chat/internal/domain"
@@ -21,6 +22,13 @@ type messageHistoryRequest struct {
 	Response chan []domain.ChatMessage
 }
 
+type ServerStats struct {
+	ActiveConnections      int
+	TotalMessagesProcessed int64
+	UptimeSeconds          int64
+	ErrorCount             int
+}
+
 const helpText = `Available commands:
   /help  - show this message
   /time  - show current server time
@@ -34,18 +42,25 @@ type Hub struct {
 	register   chan *domain.Client
 	unregister chan *domain.Client
 	requests   chan any
+	errors     chan error
 
 	messageHistory *storage.MessageHistory
+	logger         *log.Logger
+	stats          ServerStats
+	startedAt      time.Time
 }
 
-func NewHub() *Hub {
+func NewHub(logger *log.Logger) *Hub {
 	return &Hub{
 		clients:        make(map[string]*domain.Client),
 		broadcast:      make(chan domain.ChatMessage),
 		register:       make(chan *domain.Client),
 		unregister:     make(chan *domain.Client),
 		requests:       make(chan any),
+		errors:         make(chan error),
 		messageHistory: storage.NewMessageHistory(),
+		logger:         logger,
+		startedAt:      time.Now(),
 	}
 }
 
@@ -54,14 +69,22 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register:
 			h.clients[client.ID] = client
+			h.stats.ActiveConnections = len(h.clients)
+			h.logger.Printf("INFO Client %s connected", client.ID)
 		case client := <-h.unregister:
 			delete(h.clients, client.ID)
+			h.stats.ActiveConnections = len(h.clients)
+			h.logger.Printf("INFO Client %s disconnected", client.ID)
 		case msg := <-h.broadcast:
 			if msg.MessageType == domain.MsgTypeUser {
 				h.messageHistory.Add(msg)
+				h.stats.TotalMessagesProcessed++
 			}
 
 			h.broadcastMessage(msg)
+		case err := <-h.errors:
+			h.stats.ErrorCount++
+			h.logger.Printf("ERROR %v", err)
 		case r := <-h.requests:
 			switch req := r.(type) {
 			case activeClientsRequest:
@@ -85,6 +108,10 @@ func (h *Hub) Unregister(c *domain.Client) {
 
 func (h *Hub) Broadcast(m domain.ChatMessage) {
 	h.broadcast <- m
+}
+
+func (h *Hub) ReportError(err error) {
+	h.errors <- err
 }
 
 func (h *Hub) GetActiveClients() []string {

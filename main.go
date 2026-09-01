@@ -5,7 +5,8 @@ import (
 )
 
 func main() {
-	h := server.NewHub()
+	logger := server.SetupLogging("info")
+	h := server.NewHub(logger)
 
 	go h.Run()
 
