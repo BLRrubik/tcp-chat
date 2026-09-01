@@ -1,13 +1,11 @@
-package server
+package hub
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"fmt"
-	"io"
-	"log"
+	"log/slog"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,39 +15,6 @@ import (
 )
 
 const shutdownGracePeriod = 10 * time.Second
-
-var logLevels = map[string]int{"error": 0, "warn": 1, "info": 2}
-
-type levelFilterWriter struct {
-	dest      io.Writer
-	threshold int
-}
-
-func (w *levelFilterWriter) Write(p []byte) (int, error) {
-	level := logLevels["info"]
-
-	switch {
-	case bytes.Contains(p, []byte("ERROR")):
-		level = logLevels["error"]
-	case bytes.Contains(p, []byte("WARN")):
-		level = logLevels["warn"]
-	}
-
-	if level > w.threshold {
-		return len(p), nil
-	}
-
-	return w.dest.Write(p)
-}
-
-func SetupLogging(level string) *log.Logger {
-	threshold, ok := logLevels[strings.ToLower(level)]
-	if !ok {
-		threshold = logLevels["info"]
-	}
-
-	return log.New(&levelFilterWriter{dest: os.Stdout, threshold: threshold}, "[TCP-CHAT] ", log.Ldate|log.Ltime)
-}
 
 type activeClientsRequest struct {
 	Response chan []string
@@ -68,14 +33,7 @@ type closeAllRequest struct {
 }
 
 type statsRequest struct {
-	Response chan ServerStats
-}
-
-type ServerStats struct {
-	ActiveConnections      int
-	TotalMessagesProcessed int64
-	UptimeSeconds          int64
-	ErrorCount             int
+	Response chan domain.ServerStats
 }
 
 const helpText = `Available commands:
@@ -94,7 +52,7 @@ type Hub struct {
 	errors     chan error
 
 	messageHistory *storage.MessageHistory
-	logger         *log.Logger
+	logger         *slog.Logger
 	startedAt      time.Time
 
 	totalMessagesProcessed int64
@@ -106,7 +64,7 @@ type Hub struct {
 	maxConnections int
 }
 
-func NewHub(logger *log.Logger, messageHistorySize int, maxConnections int) *Hub {
+func NewHub(logger *slog.Logger, messageHistorySize int, maxConnections int) *Hub {
 	return &Hub{
 		clients:        make(map[string]*domain.Client),
 		broadcast:      make(chan domain.ChatMessage),
@@ -121,15 +79,19 @@ func NewHub(logger *log.Logger, messageHistorySize int, maxConnections int) *Hub
 	}
 }
 
+func (h *Hub) Logger() *slog.Logger {
+	return h.logger
+}
+
 func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
 			h.clients[client.ID] = client
-			h.logger.Printf("INFO Client %s connected", client.ID)
+			h.logger.Info("client connected", "client_id", client.ID)
 		case client := <-h.unregister:
 			delete(h.clients, client.ID)
-			h.logger.Printf("INFO Client %s disconnected", client.ID)
+			h.logger.Info("client disconnected", "client_id", client.ID)
 		case msg, ok := <-h.broadcast:
 			if !ok {
 				continue
@@ -143,7 +105,7 @@ func (h *Hub) Run() {
 			h.broadcastMessage(msg)
 		case err := <-h.errors:
 			h.errorCount++
-			h.logger.Printf("ERROR %v", err)
+			h.logger.Error("hub error", "error", err)
 		case r := <-h.requests:
 			switch req := r.(type) {
 			case activeClientsRequest:
@@ -158,7 +120,7 @@ func (h *Hub) Run() {
 				}
 				close(req.Response)
 			case statsRequest:
-				req.Response <- ServerStats{
+				req.Response <- domain.ServerStats{
 					ActiveConnections:      len(h.clients),
 					TotalMessagesProcessed: h.totalMessagesProcessed,
 					UptimeSeconds:          int64(time.Since(h.startedAt).Seconds()),
@@ -211,8 +173,8 @@ func (h *Hub) IsFull() bool {
 	return h.GetClientCount() >= h.maxConnections
 }
 
-func (h *Hub) GetStats() ServerStats {
-	req := statsRequest{Response: make(chan ServerStats)}
+func (h *Hub) GetStats() domain.ServerStats {
+	req := statsRequest{Response: make(chan domain.ServerStats)}
 	h.requests <- req
 
 	return <-req.Response
@@ -226,7 +188,7 @@ func (h *Hub) GetMessageHistory() []domain.ChatMessage {
 }
 
 func (h *Hub) Shutdown(ctx context.Context) error {
-	h.logger.Println("INFO Notifying clients...")
+	h.logger.Info("notifying clients")
 	h.Broadcast(domain.ChatMessage{
 		Timestamp:   time.Now(),
 		Content:     fmt.Sprintf("Server shutting down in %.0f seconds", shutdownGracePeriod.Seconds()),
@@ -246,12 +208,12 @@ func (h *Hub) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-done:
-		h.logger.Println("INFO All clients disconnected")
+		h.logger.Info("all clients disconnected")
 	case <-ctx.Done():
-		h.logger.Println("WARN Shutdown timeout reached, some goroutines did not finish")
+		h.logger.Warn("shutdown timeout reached, some goroutines did not finish")
 	}
 
-	h.logger.Println("INFO Server stopped gracefully")
+	h.logger.Info("server stopped gracefully")
 
 	return nil
 }
@@ -260,6 +222,55 @@ func (h *Hub) closeAllConnections() {
 	req := closeAllRequest{Response: make(chan struct{})}
 	h.requests <- req
 	<-req.Response
+}
+
+// HandleConnection owns the full lifecycle of one client connection:
+// registration, welcome/history, command loop, and cleanup on disconnect.
+func (h *Hub) HandleConnection(conn net.Conn) {
+	if h.IsFull() {
+		conn.Write([]byte("Server full. Try again later.\n"))
+		conn.Close()
+
+		return
+	}
+
+	var client *domain.Client
+
+	h.wg.Add(1)
+	defer h.wg.Done()
+
+	defer func() {
+		if r := recover(); r != nil {
+			id := "unknown"
+			if client != nil {
+				id = client.ID
+			}
+
+			h.logger.Warn("cleaning up client after panic, server continues", "client_id", id)
+			h.ReportError(fmt.Errorf("panic in client %s: %v", id, r))
+		}
+
+		if client != nil {
+			h.cleanupClient(client)
+		}
+	}()
+
+	client = h.setupClientConnection(conn)
+	h.Register(client)
+
+	scanner := bufio.NewScanner(client.Conn)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		h.HandleCommand(client, line)
+
+		client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	}
+
+	if err := scanner.Err(); err != nil {
+		h.logger.Error("client connection error", "client_id", client.ID, "error", err)
+		h.ReportError(err)
+	}
 }
 
 func (h *Hub) setupClientConnection(conn net.Conn) *domain.Client {
