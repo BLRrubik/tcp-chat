@@ -1,14 +1,10 @@
 package types
 
-import "sync"
-
 type CycleBuffer[T any] struct {
 	readPtr  int
 	writePtr int
 	count    int
 	buf      []T
-
-	mu sync.Mutex
 }
 
 func NewCycleBuffer[T any](size int) *CycleBuffer[T] {
@@ -18,9 +14,6 @@ func NewCycleBuffer[T any](size int) *CycleBuffer[T] {
 }
 
 func (cb *CycleBuffer[T]) Push(val T) {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-
 	cb.buf[cb.writePtr] = val
 	cb.writePtr = (cb.writePtr + 1) % len(cb.buf)
 
@@ -32,9 +25,6 @@ func (cb *CycleBuffer[T]) Push(val T) {
 }
 
 func (cb *CycleBuffer[T]) Pop() T {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-
 	if cb.count == 0 {
 		var zero T
 
@@ -49,16 +39,10 @@ func (cb *CycleBuffer[T]) Pop() T {
 }
 
 func (cb *CycleBuffer[T]) IsEmpty() bool {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-
 	return cb.count == 0
 }
 
 func (cb *CycleBuffer[T]) GetValues() []T {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-
 	vals := make([]T, 0, cb.count)
 	idx := cb.readPtr
 

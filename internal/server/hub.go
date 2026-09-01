@@ -3,12 +3,22 @@ package server
 import (
 	"fmt"
 	"net"
+	"strings"
 	"tcp-chat/internal/domain"
+	"tcp-chat/internal/storage"
 	"time"
 )
 
-type Request[T any] struct {
-	Response chan T
+type activeClientsRequest struct {
+	Response chan []string
+}
+
+type clientCountRequest struct {
+	Response chan int
+}
+
+type messageHistoryRequest struct {
+	Response chan []domain.ChatMessage
 }
 
 type Hub struct {
@@ -17,15 +27,18 @@ type Hub struct {
 	register   chan *domain.Client
 	unregister chan *domain.Client
 	requests   chan any
+
+	messageHistory *storage.MessageHistory
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[string]*domain.Client),
-		broadcast:  make(chan domain.ChatMessage),
-		register:   make(chan *domain.Client),
-		unregister: make(chan *domain.Client),
-		requests:   make(chan any),
+		clients:        make(map[string]*domain.Client),
+		broadcast:      make(chan domain.ChatMessage),
+		register:       make(chan *domain.Client),
+		unregister:     make(chan *domain.Client),
+		requests:       make(chan any),
+		messageHistory: storage.NewMessageHistory(),
 	}
 }
 
@@ -37,13 +50,19 @@ func (h *Hub) Run() {
 		case client := <-h.unregister:
 			delete(h.clients, client.ID)
 		case msg := <-h.broadcast:
+			if msg.MessageType == domain.MsgTypeUser {
+				h.messageHistory.Add(msg)
+			}
+
 			h.broadcastMessage(msg)
 		case r := <-h.requests:
 			switch req := r.(type) {
-			case Request[[]string]:
+			case activeClientsRequest:
 				req.Response <- h.activeClients()
-			case Request[int]:
+			case clientCountRequest:
 				req.Response <- len(h.clients)
+			case messageHistoryRequest:
+				req.Response <- h.messageHistory.GetRecent()
 			}
 		}
 	}
@@ -61,6 +80,27 @@ func (h *Hub) Broadcast(m domain.ChatMessage) {
 	h.broadcast <- m
 }
 
+func (h *Hub) GetActiveClients() []string {
+	req := activeClientsRequest{Response: make(chan []string)}
+	h.requests <- req
+
+	return <-req.Response
+}
+
+func (h *Hub) GetClientCount() int {
+	req := clientCountRequest{Response: make(chan int)}
+	h.requests <- req
+
+	return <-req.Response
+}
+
+func (h *Hub) GetMessageHistory() []domain.ChatMessage {
+	req := messageHistoryRequest{Response: make(chan []domain.ChatMessage)}
+	h.requests <- req
+
+	return <-req.Response
+}
+
 func (h *Hub) setupClientConnection(conn net.Conn) *domain.Client {
 	client := &domain.Client{
 		ID:       domain.GenerateClientID(),
@@ -70,7 +110,8 @@ func (h *Hub) setupClientConnection(conn net.Conn) *domain.Client {
 
 	client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
-	client.Conn.Write([]byte(fmt.Sprintf("Welcome %s! Type your messages below:\n", client.ID)))
+	h.SendMessageHistory(client)
+	client.Conn.Write([]byte(fmt.Sprintf("Welcome! %d users online. Type /help for commands.\n", h.GetClientCount())))
 
 	h.Broadcast(domain.ChatMessage{
 		Timestamp:   time.Now(),
@@ -93,20 +134,6 @@ func (h *Hub) cleanupClient(client *domain.Client) {
 	})
 }
 
-func (h *Hub) GetActiveClients() []string {
-	req := Request[[]string]{Response: make(chan []string)}
-	h.requests <- req
-
-	return <-req.Response
-}
-
-func (h *Hub) GetClientCount() int {
-	req := Request[int]{Response: make(chan int)}
-	h.requests <- req
-
-	return <-req.Response
-}
-
 func (h *Hub) activeClients() []string {
 	ids := make([]string, 0, len(h.clients))
 	for id := range h.clients {
@@ -124,4 +151,27 @@ func (h *Hub) broadcastMessage(m domain.ChatMessage) {
 
 		client.Conn.Write([]byte(domain.FormatMessage(m) + "\n"))
 	}
+}
+
+func (h *Hub) SendMessageHistory(client *domain.Client) {
+	sb := strings.Builder{}
+
+	sb.WriteString("--- Recent messages ---\n")
+	for _, msg := range h.GetMessageHistory() {
+		sb.WriteString(domain.FormatMessage(msg) + "\n")
+	}
+	sb.WriteString("--- End of history ---\n")
+
+	client.Conn.Write([]byte(sb.String()))
+}
+
+func (h *Hub) SendUserList(client *domain.Client) {
+	sb := strings.Builder{}
+
+	sb.WriteString("Active users:\n")
+	for _, id := range h.GetActiveClients() {
+		sb.WriteString("\t- " + id + "\n")
+	}
+
+	client.Conn.Write([]byte(sb.String()))
 }

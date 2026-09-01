@@ -2,7 +2,6 @@ package types
 
 import (
 	"reflect"
-	"sync"
 	"testing"
 )
 
@@ -120,26 +119,4 @@ func TestPop_OnEmptyReturnsZeroValue(t *testing.T) {
 	if v := cb.Pop(); v != 0 {
 		t.Errorf("got %d, want 0 (zero value)", v)
 	}
-}
-
-func TestConcurrentPushPopIsEmpty_NoRace(t *testing.T) {
-	cb := NewCycleBuffer[int](8)
-	var wg sync.WaitGroup
-
-	for i := 0; i < 200; i++ {
-		wg.Add(3)
-		go func(v int) {
-			defer wg.Done()
-			cb.Push(v)
-		}(i)
-		go func() {
-			defer wg.Done()
-			_ = cb.IsEmpty()
-		}()
-		go func() {
-			defer wg.Done()
-			_ = cb.Pop()
-		}()
-	}
-	wg.Wait()
 }
