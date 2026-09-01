@@ -21,6 +21,13 @@ type messageHistoryRequest struct {
 	Response chan []domain.ChatMessage
 }
 
+const helpText = `Available commands:
+  /help  - show this message
+  /time  - show current server time
+  /users - list active users
+  /quit  - disconnect
+`
+
 type Hub struct {
 	clients    map[string]*domain.Client
 	broadcast  chan domain.ChatMessage
@@ -163,6 +170,22 @@ func (h *Hub) SendMessageHistory(client *domain.Client) {
 	sb.WriteString("--- End of history ---\n")
 
 	client.Conn.Write([]byte(sb.String()))
+}
+
+func (h *Hub) HandleCommand(client *domain.Client, command string) {
+	switch command {
+	case "/help":
+		client.Conn.Write([]byte(helpText))
+	case "/time":
+		client.Conn.Write([]byte(time.Now().Format(time.RFC1123) + "\n"))
+	case "/users":
+		h.SendUserList(client)
+	case "/quit":
+		client.Conn.Write([]byte("Goodbye!\n"))
+		client.Conn.Close()
+	default:
+		h.Broadcast(domain.ParseIncomingMessage(command, client.ID))
+	}
 }
 
 func (h *Hub) SendUserList(client *domain.Client) {
